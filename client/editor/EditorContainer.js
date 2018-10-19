@@ -25,10 +25,10 @@ export default class EditorContainer extends PureComponent {
 
     componentDidMount () {
         // open connection to ShareDB websocket
-        let socket = this.socket = new ReconnectingWebSocket('ws://localhost:8080')
+        let socket = this.socket = new ReconnectingWebSocket('ws://glacial-cove-20010.herokuapp.com:8080')
         const connection = new sharedb.Connection(socket)
         // open connection to cursors websocket
-        let cursorsSocket = this.cursorsSocket = new ReconnectingWebSocket('ws://localhost:8081')
+        let cursorsSocket = this.cursorsSocket = new ReconnectingWebSocket('ws://glacial-cove-20010.herokuapp.com:8081')
 
 
         
