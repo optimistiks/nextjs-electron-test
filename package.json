@@ -6,7 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "next client",
     "build": "next build client",
-    "start": "next start client",
+    "start": "next start client --hostname 0.0.0.0 --port 80",
     "electron-dev": "better-npm-run electron-dev",
     "electron-build": "better-npm-run electron-build",
     "electron-dist": "better-npm-run electron-dist"
