@@ -4,6 +4,7 @@ var richText = require('rich-text');
 const admin = require('firebase-admin');
 
 var serviceAccount = require('../service-account.json');
+const util = require('util')
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -59,43 +60,53 @@ class FirestoreAdapter extends ShareDB.DB {
     //      operation: [] (subcollection)
 
     async commit(collection, id, op, snapshot, options, callback) {
-        console.log('shareDb.js: commit start', { id, op, snapshot })
-        // get last operation version
-        // if snapshot version not equals operation version + 1 then return callback(null, false)
-        const opCollectionRef = db.collection(`documentOperation`).doc(id).collection('operation')
-        const lastOpQuery = await opCollectionRef
-            .orderBy('version', 'desc').limit(1)
-            .get()
-
-        if (!lastOpQuery.empty) {
-            const lastOpResult = lastOpQuery.docs[0]
-            const lastOp = lastOpResult.data()
-            const versionsToLog = { snapshotVersion: snapshot.v, lastOpVersion: lastOp.v }
-            console.log('shareDb.js: commit versions', versionsToLog)
-            if (snapshot.v !== lastOp.v + 1) {
-                console.error('shareDb.js: commit wrong snapshot version', versionsToLog)
-                return callback(null, false)
-            } 
+        const commitLog = { 
+            id, 
+            opV: op.v, 
+            snapshotV: snapshot.v, 
+            op: util.inspect(op, { showHidden: false, depth: null }), 
+            snapshot: util.inspect(snapshot, { showHidden: false, depth: null }) 
         }
-    
-        const snapshotRef = db.collection('documentSnapshot').doc(id)
+        console.log('shareDb.js: commit start', commitLog)
+        try {
+            await db.runTransaction(async function (transaction) {
+                const opCollectionRef = db.collection(`documentOperation`).doc(id).collection('operation')
 
-        // convert snapshot and op to object since Firestore does not support objects with altered prototypes
-        const snapshotObject = JSON.parse(JSON.stringify(snapshot))
-        const opObject = JSON.parse(JSON.stringify(op))
+                // lets say our op.v is 10
+                // we try to get operation/10 with a transaction
+                // if no one writes into that location (exists=false), then transaction will succeed
+                // but if someone writes into that location (exists=true), transaction will abort, and commit will re-run
+                // this way the race condition will be eliminated 
+                // (when someone saves a v=10 operation before you, and then yours is saved, 
+                // resulting in two v=10 operations, breaking the document)
+                const opDocRef = opCollectionRef.doc(op.v.toString())
+                const opDocResult = await transaction.get(opDocRef)
 
-        console.log('shareDb.js: commit ready to commit', { snapshotObject, opObject })
+                if (opDocResult.exists) {
+                    // someone wrote to that location, we need to abort commit, 
+                    // but first we manually abort the transaction
+                    console.log('shareDb.js: aborting transaction', commitLog)
+                    return new Promise((resolve, reject) => reject())
+                }
 
-        const batch = db.batch()
-        batch.set(snapshotRef, snapshotObject)
-        batch.set(opCollectionRef.doc(), opObject)
-        await batch.commit()
-        console.log('shareDb.js: commit done')
-        callback(null, true)
+                const snapshotRef = db.collection('documentSnapshot').doc(id)
+
+                // convert snapshot and op to object since Firestore does not support objects with altered prototypes
+                const snapshotObject = JSON.parse(JSON.stringify(snapshot))
+                const opObject = JSON.parse(JSON.stringify(op))
+
+                transaction.set(snapshotRef, snapshotObject).set(opDocRef, opObject)
+            })
+            console.log('shareDb.js: transaction succeeded, commit done', commitLog)
+            callback(null, true)
+        } catch (err) {
+            console.log('shareDb.js: transaction failed, aborting commit', { err, ...commitLog })
+            callback(null, false)
+        }
     }
 
     async getSnapshot (collectionName, id, fields, options, callback) {
-        console.log('shareDb.js: getSnapshot start', { id })
+        console.log('shareDb.js: getSnapshot start', { id, fields, options })
         const snapshotResult = await db.collection('documentSnapshot').doc(id).get()
         if (!snapshotResult.exists) {
             const nullSnapshot = {
@@ -108,16 +119,34 @@ class FirestoreAdapter extends ShareDB.DB {
             return callback(null, nullSnapshot)
         }
         const snapshot = snapshotResult.data()
-        console.log('shareDb.js: getSnapshot found snapshot', { snapshot })
+        console.log('shareDb.js: getSnapshot found snapshot', { snapshotV: snapshot.v })
         return callback(null, snapshot)
     }
 
-    async query (collection, query, fields, options, callback) {
-        console.log('shareDb.js: query', { collection, query, fields, options, callback })
-    }
-
     async getOps (collection, id, from, to, options, callback) {
-        console.log('shareDb.js: getOps', { collection, id, from, to, options, callback })
+        console.log('shareDb.js: getOps', { id, from, to, options })
+
+        let opsQuery = db.collection(`documentOperation`).doc(id).collection('operation').orderBy('v', 'asc')
+
+        if (from) {
+            opsQuery = opsQuery.where('v', '>=', from)
+        }
+
+        if (to) {
+            opsQuery = opsQuery.where('v', '<', to)
+        }
+
+        const opsQueryResult = await opsQuery.get()
+
+        const ops = []
+
+        opsQueryResult.forEach((snapshot) => {
+            ops.push(snapshot.data())
+        })
+
+        console.log('shareDb.js: getOps result', { ops: util.inspect(ops, { showHidden: false, depth: null }) })
+
+        callback(null, ops)
     }
 }
 
