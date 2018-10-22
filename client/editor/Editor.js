@@ -9,9 +9,12 @@ export default function Editor (props) {
     return (
         <div>
             <div>
-                {Object.values(props.users).map((user) => {
+                {Object.values(props.users).map((user, index) => {
                     return (
-                        <div style={{ border: `1px solid ${user.color}`, color: user.color, padding: '10px' }}>
+                        <div 
+                            style={{ border: `1px solid ${user.color}`, color: user.color, padding: '10px' }}
+                            key={index}    
+                        >
                             {user.name}
                         </div>
                     )
