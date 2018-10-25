@@ -1,9 +1,13 @@
 var ShareDB = require('sharedb');
 var richText = require('rich-text');
 
+const getConfig = require('next/config')
+const { serverRuntimeConfig } = getConfig()
+
+const serviceAccount = serverRuntimeConfig.FIREBASE_KEY;
+
 const admin = require('firebase-admin');
 
-var serviceAccount = require('../service-account.json');
 const util = require('util')
 
 admin.initializeApp({
