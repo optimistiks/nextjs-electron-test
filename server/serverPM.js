@@ -16,6 +16,12 @@ var wssData = new WebSocket.Server({ noServer: true });
 
 const schema = require('../universal/schema')
 
+const getConfig = require('next/config').default
+const { serverRuntimeConfig } = getConfig()
+
+console.log('firebase key', serverRuntimeConfig.FIREBASE_KEY)
+
+const serviceAccount = JSON.parse(serverRuntimeConfig.FIREBASE_KEY);
 const admin = require('firebase-admin');
 
 admin.initializeApp({

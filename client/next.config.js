@@ -14,7 +14,7 @@ module.exports = () => {
                 '/': { page: '/index' }
             }
         },
-        publicRuntimeConfig: { // Will be available on both server and client
+        serverRuntimeConfig: { // Will be available on both server and client
             FIREBASE_KEY: process.env.FIREBASE_KEY // Pass through env variables
         }
     }
