@@ -109,7 +109,7 @@ export default class EditorContainer extends PureComponent {
             const steps = message.steps.map((stepJSON) => Step.fromJSON(schema, stepJSON))
             // create transaction that applies steps and sets initial cursors
             const transaction = collab
-                .receiveTransaction(window.view.state, steps, message.userIds)
+                .receiveTransaction(window.view.state, steps, message.userIds, { mapSelectionBackward: true })
                 .setMeta(cursorsPluginKey, { cursors: message.cursors })
             // dispatch the transaction
             window.view.dispatch(transaction)
@@ -150,11 +150,18 @@ export default class EditorContainer extends PureComponent {
         const newState = view.state.apply(transaction)
         const isSelectionChanged = view.state.selection !== newState.selection
         view.updateState(newState)
+        console.log('selection', view.state.selection)
         // send update steps to the collaboration server, if needed
         // http://prosemirror.net/docs/ref/#collab.sendableSteps
         const sendable = collab.sendableSteps(window.view.state)
         if (sendable) {
-            this.debouncedSend(this.state.userId, window.view.state, sendable)
+            const clientDocumentChangeMessage = createDocumentChangeMessage(
+                this.state.userId,
+                view.state,
+                sendable
+            )
+            this.socket.send(JSON.stringify(clientDocumentChangeMessage))
+            console.log('client-document-change sent', clientDocumentChangeMessage)
         } else if (isSelectionChanged) {
             const clientSelectionChangeMessage = createSelectionChangeMessage(
                 this.state.userId,
@@ -165,16 +172,7 @@ export default class EditorContainer extends PureComponent {
         }
     }
 
-    debouncedSend = (userId, editorState, sendable) => {
-        const clientDocumentChangeMessage = createDocumentChangeMessage(
-            userId,
-            editorState,
-            sendable
-        )
-        this.socket.send(JSON.stringify(clientDocumentChangeMessage))
-        console.log('client-document-change sent', clientDocumentChangeMessage)
-    }
-
+        
     handleUserJoinMessage (message) {
         this.setState({
             users: {
@@ -209,12 +207,12 @@ export default class EditorContainer extends PureComponent {
             ...message.cursors
         } })
         window.view.dispatch(selectionTr)
-        console.log('version after server-selection-change dispatch', collab.getVersion(window.view.state))
     }
 
     handleDocumentChangeMessage (message) {
         const steps = message.steps.map((stepJSON) => Step.fromJSON(schema, stepJSON))
-        let transaction = collab.receiveTransaction(window.view.state, steps, message.userIds)
+        let transaction = collab
+            .receiveTransaction(window.view.state, steps, message.userIds, { mapSelectionBackward: true })
         // update user cursor, or it could be multiple cursors
         const pluginState = cursorsPluginKey.getState(window.view.state)
         transaction = transaction.setMeta(cursorsPluginKey, { cursors: {
@@ -222,7 +220,7 @@ export default class EditorContainer extends PureComponent {
             ...message.cursors
         } })
         window.view.dispatch(transaction)
-        console.log('version after server-document-change dispatch', collab.getVersion(window.view.state))
+        console.log('selection', view.state.selection)
     }
 
     componentWillUnmount() {

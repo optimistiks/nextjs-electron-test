@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node -r dotenv/config server/serverPM.js",
     "electron-dev": "better-npm-run electron-dev",
     "electron-build": "better-npm-run electron-build",
-    "electron-dist": "better-npm-run electron-dist"
+    "electron-dist": "better-npm-run electron-dist",
+    "postinstall": "npm run build"
   },
   "betterScripts": {
     "electron-dev": {

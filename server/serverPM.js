@@ -54,13 +54,14 @@ let colorCursor = 0
 // and then sends those changes to all clients
 
 wssData.on('connection', function (client) {
+    client.on('pong', () => console.log('got pong'))
     client.color = colors[colorCursor]
     colorCursor += 1
     if (colorCursor === colors.length) {
         colorCursor = 0
     }
 
-    client.on('message', (data) => {
+    client.on('message', async function (data) {
         const message = JSON.parse(data)
         console.log(message.type, 'received', message)
         switch (message.type) {
@@ -109,6 +110,8 @@ wssData.on('connection', function (client) {
                 })
                 break
             case 'client-document-change':
+                await sleep(3000)
+                
                 if (message.version > documentVersion) {
                     console.log('client version greater than server version', { clientVersion: message.version, serverVersion: documentVersion })
                     throw new Error('client version cannot be greater than server version')
@@ -197,6 +200,13 @@ wssData.on('connection', function (client) {
     })
 });
 
+const interval = setInterval(function ping() {
+    wssData.clients.forEach(function each(ws) {
+        ws.ping();
+    });
+}, 5000);
+
+
 app.prepare().then(() => {
     const server = createServer((req, res) => {
         // Be sure to pass `true` as the second argument to `url.parse`.
@@ -222,5 +232,12 @@ app.prepare().then(() => {
         console.log(`server listening on http://localhost:${port}`)
     })
 })
+
+function sleep(ms) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms)
+    })
+}
+
 
 
