@@ -21,9 +21,21 @@ let cursorsPlugin = new Plugin({
             if (meta == null) {
                 return pluginState
             }
+
+            // build a map of cursors that excludes your own cursor
+            const cursors = Object.keys(meta.cursors).reduce((cursors, userId) => {
+                console.log('comparing', { userId, andUserId: meta.userId })
+                if (userId != meta.userId && meta.cursors[userId].selection) {
+                    cursors[userId] = meta.cursors[userId]
+                }
+                return cursors
+            }, {})
+
+            console.log('got meta', meta, 'cursors are', cursors)
+
             const newPluginState = {
                 ...pluginState,
-                cursors: meta.cursors
+                cursors
             }
             return newPluginState
         }
@@ -31,7 +43,7 @@ let cursorsPlugin = new Plugin({
     props: {
         decorations(pluginState) {
             const { cursors } = pluginState[this.key]
-            const decorations = Object.keys(cursors).filter((userId) => cursors[userId].selection).map((userId) => {
+            const decorations = Object.keys(cursors).map((userId) => {
                 const cursor = cursors[userId]
                 const { selection } = cursor
                 if (selection.anchor === selection.head) {
@@ -110,7 +122,7 @@ export default class EditorContainer extends PureComponent {
             // create transaction that applies steps and sets initial cursors
             const transaction = collab
                 .receiveTransaction(window.view.state, steps, message.userIds, { mapSelectionBackward: true })
-                .setMeta(cursorsPluginKey, { cursors: message.cursors })
+                .setMeta(cursorsPluginKey, { cursors: message.cursors, userId: this.state.userId })
             // dispatch the transaction
             window.view.dispatch(transaction)
         } else if (message.document) {
@@ -135,7 +147,7 @@ export default class EditorContainer extends PureComponent {
                 dispatchTransaction: this.dispatchTransaction
             })
             // set initial cursors
-            const cursorsTr = view.state.tr.setMeta(cursorsPluginKey, { cursors: message.cursors })
+            const cursorsTr = view.state.tr.setMeta(cursorsPluginKey, { cursors: message.cursors, userId: this.state.userId })
             window.view.dispatch(cursorsTr)
         } else {
             throw new Error('Could not handle greet event', message)
@@ -195,17 +207,20 @@ export default class EditorContainer extends PureComponent {
             ...pluginState.cursors,
         }
         delete newCursors[message.userId]
-        const selectionTr = view.state.tr.setMeta(cursorsPluginKey, { cursors: newCursors })
+        const selectionTr = view.state.tr.setMeta(cursorsPluginKey, { cursors: newCursors, userId: this.state.userId })
         window.view.dispatch(selectionTr)
     }
 
     handleSelectionChangeMessage (message) {
         // update user cursor, or it could be multiple cursors
         const pluginState = cursorsPluginKey.getState(window.view.state)
-        const selectionTr = view.state.tr.setMeta(cursorsPluginKey, { cursors: {
+        const selectionTr = view.state.tr.setMeta(cursorsPluginKey, { 
+            cursors: {
             ...pluginState.cursors,
             ...message.cursors
-        } })
+            }, 
+            userId: this.state.userId 
+        })
         window.view.dispatch(selectionTr)
     }
 
@@ -215,10 +230,13 @@ export default class EditorContainer extends PureComponent {
             .receiveTransaction(window.view.state, steps, message.userIds, { mapSelectionBackward: true })
         // update user cursor, or it could be multiple cursors
         const pluginState = cursorsPluginKey.getState(window.view.state)
-        transaction = transaction.setMeta(cursorsPluginKey, { cursors: {
+        transaction = transaction.setMeta(cursorsPluginKey, { 
+            cursors: {
             ...pluginState.cursors,
             ...message.cursors
-        } })
+            }, 
+            userId: this.state.userId 
+        })
         window.view.dispatch(transaction)
         console.log('selection', view.state.selection)
     }
@@ -227,8 +245,18 @@ export default class EditorContainer extends PureComponent {
         this.socket.close()
     }
 
+    getUsersExceptYourself () {
+        return Object.keys(this.state.users).reduce((users, userId) => {
+            if (userId != this.state.userId) {
+                users[userId] = this.state.users[userId]
+            }
+            return users
+        }, {})
+    }
+
     render() {
-        return <Editor users={this.state.users} />
+        console.log('users are', this.getUsersExceptYourself())
+        return <Editor users={this.getUsersExceptYourself()} />
     }
 }
 
